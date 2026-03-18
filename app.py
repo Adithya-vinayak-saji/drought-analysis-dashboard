@@ -4,10 +4,22 @@ import numpy as np
 import altair as alt
 import google.generativeai as genai
 import pymannkendall as mk
-from prophet import Prophet  # New Engine
+from prophet import Prophet 
 
-# --- INITIALIZATION ---
-st.set_page_config(layout="wide", page_title="Drought Intelligence Suite", page_icon="🌵")
+# --- INITIALIZATION & STYLING ---
+st.set_page_config(layout="wide", page_title="Drought Intelligence Pro", page_icon="🛰️")
+
+# Inject Custom CSS for a "Premium" look
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; }
+    div[data-testid="stMetricValue"] { font-size: 28px; color: #00d4ff; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] { 
+        background-color: #1e293b; border-radius: 4px; color: white; padding: 10px;
+    }
+    </style>
+    """, unsafe_allow_items=True)
 
 if 'saved_key' not in st.session_state:
     st.session_state.saved_key = ""
@@ -27,7 +39,7 @@ def get_longest_duration(series, threshold=-1.0):
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("🌵 Drought Control")
+    st.title("🛰️ Drought Control")
     input_key = st.text_input("Gemini API Key", value=st.session_state.saved_key, type="password")
     if st.checkbox("Remember API Key", value=bool(st.session_state.saved_key)):
         st.session_state.saved_key = input_key
@@ -77,66 +89,108 @@ if uploaded_file and selected_sheet:
     max_duration = get_longest_duration(df['SPEI_Proxy'])
     mk_res = mk.original_test(df['SPEI_Proxy'])
 
-    st.title(f"🔍 SPEI Intelligence: {selected_sheet}")
+    st.title(f"🛰️ SPEI Intelligence: {selected_sheet}")
+    st.caption("Advanced Hydrological Analytics & Predictive Modeling")
     
+    # --- METRICS (Updated with Delta) ---
     m1, m2, m3, m4 = st.columns(4)
-    with m1: st.metric("Trend", mk_res.trend.upper())
-    with m2: st.metric("Sen's Slope", f"{mk_res.slope:.6f}") 
+    with m1: st.metric("Trend Direction", mk_res.trend.upper(), delta=f"{mk_res.slope:.6f} units/mo")
+    with m2: st.metric("Max Streak", f"{max_duration} Months") 
     with m3: st.metric("Extreme Events", extreme_count)
-    with m4: st.metric("Max Duration", f"{max_duration} Months")
+    with m4: st.metric("Current Status", "MODERATE" if df['SPEI_Proxy'].iloc[-1] < -1 else "STABLE")
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📉 Timeline", "⚖️ Water Balance", "🚨 Raw SPEI", "🌊 Smooth Trend", "🤖 AI Insight", "🔮 Prophet Forecast"
+    # --- TABS ---
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📈 Water Dynamics", "🌡️ Intensity Heatmap", "📊 MK Statistics", "🤖 AI Brief", "🔮 Prophet Forecast"
     ])
 
     danger_lines = alt.Chart(pd.DataFrame({'y': [-1.5, -2.0], 'label': ['Severe', 'Extreme']})).mark_rule(color='red', strokeDash=[5,5]).encode(y='y:Q', tooltip='label:N')
 
     with tab1:
-        st.altair_chart(alt.Chart(df).mark_line().encode(x='Combined_Date:T', y=f'{p_col}:Q', color=alt.value('#3b82f6')).properties(height=400).interactive(), use_container_width=True)
+        st.subheader("Hydrological Balance ($D = P - PET$)")
+        # Smooth Area Chart instead of jagged bars
+        balance_chart = alt.Chart(df).mark_area(opacity=0.7).encode(
+            x=alt.X('Combined_Date:T', title='Timeline'),
+            y=alt.Y('D:Q', title='Water Balance'),
+            color=alt.condition(alt.datum.D > 0, alt.value('#00d4ff'), alt.value('#ff4b4b')),
+            tooltip=['Combined_Date', 'D']
+        ).properties(height=400).interactive()
+        
+        zero_line = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='white', strokeWidth=1, opacity=0.5).encode(y='y')
+        st.altair_chart(balance_chart + zero_line, use_container_width=True)
 
     with tab2:
-        st.altair_chart(alt.Chart(df).mark_bar().encode(x='Combined_Date:T', y='D:Q', color=alt.condition(alt.datum.D > 0, alt.value('#60a5fa'), alt.value('#f87171'))).properties(height=400).interactive(), use_container_width=True)
+        st.subheader("Decadal Drought Intensity")
+        # Year-Month Heatmap
+        df['Year'] = df['Combined_Date'].dt.year
+        df['Month_Name'] = df['Combined_Date'].dt.month_name().str[:3]
+        
+        heatmap = alt.Chart(df).mark_rect().encode(
+            x=alt.X('Month_Name:N', title='Month', sort=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']),
+            y=alt.Y('Year:O', title='Year', axis=alt.Axis(values=list(range(df['Year'].min(), df['Year'].max(), 5)))),
+            color=alt.Color('SPEI_Proxy:Q', scale=alt.Scale(scheme='redblue', domain=[-3, 3], reverse=False), title="SPEI"),
+            tooltip=['Year', 'Month_Name', 'SPEI_Proxy']
+        ).properties(height=500)
+        st.altair_chart(heatmap, use_container_width=True)
 
     with tab3:
-        st.altair_chart((alt.Chart(df).mark_line(point=True).encode(x='Combined_Date:T', y='SPEI_Proxy:Q') + danger_lines).properties(height=400).interactive(), use_container_width=True)
+        st.subheader("🧪 Mann-Kendall Trend Analysis")
+        st.markdown("The Mann-Kendall test determines if there is a monotonic upward or downward trend, robust against climate outliers.")
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("$p$-value", f"{mk_res.p:.5f}")
+            st.caption("Significance ($p < 0.05$ is significant)")
+        with c2:
+            st.metric("$z$-score", f"{mk_res.z:.4f}")
+            st.caption("Test Statistic")
+        with c3:
+            st.metric("Tau ($\\tau$)", f"{mk_res.tau:.4f}")
+            st.caption("Trend Strength")
+
+        st.divider()
+        is_significant = "SIGNIFICANT" if mk_res.p < 0.05 else "NOT SIGNIFICANT"
+        color = "green" if mk_res.p < 0.05 else "red"
+        st.markdown(f"**Conclusion:** The data shows a **{mk_res.trend.upper()}** trend that is statistically **:{color}[{is_significant}]**.")
+
+        # Overlay Sen's Slope on Data
+        df['Trend_Line'] = mk_res.intercept + mk_res.slope * np.arange(len(df))
+        base = alt.Chart(df).encode(x=alt.X('Combined_Date:T', title='Timeline'))
+        raw = base.mark_line(color='#1e293b', opacity=0.4).encode(y=alt.Y('SPEI_Proxy:Q', title='SPEI'))
+        trend = base.mark_line(color='#00d4ff', strokeWidth=3).encode(y='Trend_Line:Q')
+        st.altair_chart((raw + trend).properties(height=350).interactive(), use_container_width=True)
 
     with tab4:
-        st.altair_chart((alt.Chart(df).mark_area(line={'color':'#1e40af'}).encode(x='Combined_Date:T', y='SPEI_Rolling:Q') + danger_lines).properties(height=400).interactive(), use_container_width=True)
-
-    with tab5:
         st.subheader("🤖 AI Strategic Briefing")
         if st.button("Analyze with Gemini"):
             if st.session_state.saved_key:
                 try:
                     genai.configure(api_key=st.session_state.saved_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    prompt = f"Climatologist view: Trend={mk_res.trend}, Slope={mk_res.slope:.6f}, Max Drought={max_duration} months. Briefly assess risk."
-                    response = model.generate_content(prompt)
-                    st.markdown(response.text)
+                    # Automatically select the first available text model to prevent 404 errors
+                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    if models:
+                        model = genai.GenerativeModel(models[0])
+                        prompt = f"Climatologist view: Trend={mk_res.trend}, Slope={mk_res.slope:.6f}, Max Drought={max_duration} months, P-value={mk_res.p:.5f}. Briefly assess risk."
+                        response = model.generate_content(prompt)
+                        st.markdown(response.text)
+                    else:
+                        st.error("No valid text generation models found for this API key.")
                 except Exception as e:
                     st.error(f"AI Error: {e}")
 
-    with tab6:
+    with tab5:
         st.subheader("🔮 12-Month Predictive Modeling (Prophet)")
         try:
-            # 1. Prepare data for Prophet (requires 'ds' and 'y' columns)
             p_df = df[['Combined_Date', 'SPEI_Proxy']].rename(columns={'Combined_Date': 'ds', 'SPEI_Proxy': 'y'})
-            
-            # 2. Initialize and fit
             m = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
             m.fit(p_df)
-            
-            # 3. Predict future
             future = m.make_future_dataframe(periods=12, freq='MS')
             forecast = m.predict(future)
             
-            # 4. Filter to show only the forecast period for clarity
             forecast_results = forecast.tail(12)[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
-            
-            # 5. Visualize with Altair
             base_f = alt.Chart(forecast_results).encode(x=alt.X('ds:T', title='Future Timeline'))
-            band = base_f.mark_area(opacity=0.3, color='#8b5cf6').encode(y=alt.Y('yhat_lower:Q', title='Predicted SPEI'), y2='yhat_upper:Q')
-            line = base_f.mark_line(color='#8b5cf6', strokeDash=[5,5], point=True).encode(y='yhat:Q', tooltip=['ds', 'yhat'])
+            band = base_f.mark_area(opacity=0.3, color='#00d4ff').encode(y=alt.Y('yhat_lower:Q', title='Predicted SPEI'), y2='yhat_upper:Q')
+            line = base_f.mark_line(color='#00d4ff', strokeDash=[5,5], point=True).encode(y='yhat:Q', tooltip=['ds', 'yhat'])
             
             st.altair_chart((band + line + danger_lines).properties(height=400).interactive(), use_container_width=True)
             st.success("Prophet has successfully detected the seasonal patterns in your data and projected them forward.")
