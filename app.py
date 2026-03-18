@@ -19,7 +19,7 @@ st.markdown("""
         background-color: #1e293b; border-radius: 4px; color: white; padding: 10px;
     }
     </style>
-    """, unsafe_allow_items=True)
+    """, unsafe_allow_html=True)
 
 if 'saved_key' not in st.session_state:
     st.session_state.saved_key = ""
