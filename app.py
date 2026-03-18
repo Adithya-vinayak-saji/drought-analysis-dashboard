@@ -137,15 +137,16 @@ if uploaded_file and selected_sheet:
         st.subheader("🧪 Mann-Kendall Trend Analysis")
         st.markdown("The Mann-Kendall test determines if there is a monotonic upward or downward trend, robust against climate outliers.")
 
+        # Check if mk_res exists and has data
+    if mk_res:
         c1, c2, c3 = st.columns(3)
         with c1:
             st.metric("$p$-value", f"{mk_res.p:.5f}")
-            st.caption("Significance ($p < 0.05$ is significant)")
         with c2:
             st.metric("$z$-score", f"{mk_res.z:.4f}")
-            st.caption("Test Statistic")
         with c3:
-            st.metric("Tau ($\\tau$)", f"{mk_res.tau:.4f}")
+            # The library uses .tau for the original_test
+            st.metric("Tau ($\\tau$)", f"{getattr(mk_res, 'tau', 0):.4f}")
             st.caption("Trend Strength")
 
         st.divider()
