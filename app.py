@@ -9,17 +9,6 @@ from scipy.signal import find_peaks
 import os
 import streamlit.components.v1 as components # Added for interactive HTML
 
-# --- API KEY SECURITY ---
-# This looks for the key in .streamlit/secrets.toml first
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        HARDCODED_GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
-    else:
-        HARDCODED_GEMINI_KEY = ""
-except Exception:
-    # If the .streamlit folder or secrets file is missing, the app won't crash
-    HARDCODED_GEMINI_KEY = "" 
-
 # --- INITIALIZATION & STYLING ---
 st.set_page_config(layout="wide", page_title="Drought Intelligence Pro", page_icon="🛰️")
 
@@ -74,25 +63,23 @@ def make_detailed_chart(data, column, label, unit, color):
 with st.sidebar:
     st.title("🛰️ Drought Control")
     
-    if HARDCODED_GEMINI_KEY.strip():
-        st.session_state.saved_key = HARDCODED_GEMINI_KEY
-        st.success("🔒 Using built-in API Key")
-    else:
-        input_key = st.text_input("Gemini API Key", value=st.session_state.saved_key, type="password")
-        if st.checkbox("Remember API Key", value=bool(st.session_state.saved_key)):
-            st.session_state.saved_key = input_key
+    # Purely user-provided API key. "password" type hides the text.
+    user_api_key = st.text_input("Enter Gemini API Key", type="password", help="Get a free key at ai.google.dev")
     
     if st.button("🔍 Check API Connection"):
-        if st.session_state.saved_key:
+        if user_api_key:
             try:
-                genai.configure(api_key=st.session_state.saved_key)
+                genai.configure(api_key=user_api_key)
+                # Quick test to see if the key is valid
                 models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                st.success(f"Connected! Available: {len(models)} models")
+                st.success("✅ Connection Successful!")
             except Exception as e:
-                st.error(f"Failed: {e}")
+                st.error(f"❌ Invalid Key: {e}")
         else:
             st.warning("Please enter an API Key first.")
             
+    st.subheader("📊 Chart Controls")
+    # ... keep your zoom_range and file uploader code exactly the same below this ...            
     st.subheader("📊 Chart Controls")
     
     # This slider controls the Y-Axis of Tab 1
@@ -346,24 +333,21 @@ if uploaded_file and selected_sheet:
     with tab5:
         st.subheader("🤖 AI Strategic Briefing")
         if st.button("Generate AI Assessment"):
-            if st.session_state.saved_key:
+            if user_api_key:
                 try:
-                    genai.configure(api_key=st.session_state.saved_key)
-                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    if models:
-                        model = genai.GenerativeModel(models[0])
-                        surplus_count = len(df[df['Status'] == 'Surplus'])
-                        deficit_count = len(df[df['Status'] == 'Deficit'])
-                        prompt = (
-                            f"Analyze risk: Water Balance: {surplus_count} surplus vs {deficit_count} deficit. "
-                            f"MK: {mk_res.trend}, Slope: {mk_res.slope:.6f}. Max Dry Streak: {max_duration} months. "
-                            f"Forecast: Predicted avg SPEI {future_only['Predicted_SPEI'].mean():.2f}."
-                        )
-                        with st.spinner("Analyzing..."):
-                            response = model.generate_content(prompt)
-                            st.markdown(response.text)
-                    else:
-                        st.error("No valid text generation models found for this API key.")
+                    genai.configure(api_key=user_api_key)
+                    model = genai.GenerativeModel('gemini-2.5-flash')
+
+                    surplus_count = len(df[df['Status'] == 'Surplus'])
+                    deficit_count = len(df[df['Status'] == 'Deficit'])
+                    prompt = (
+                        f"Analyze risk: Water Balance: {surplus_count} surplus vs {deficit_count} deficit. "
+                        f"MK: {mk_res.trend}, Slope: {mk_res.slope:.6f}. Max Dry Streak: {max_duration} months. "
+                        f"Forecast: Predicted avg SPEI {future_only['Predicted_SPEI'].mean():.2f}."
+                    )
+                    with st.spinner("Analyzing..."):
+                        response = model.generate_content(prompt)
+                        st.markdown(response.text)
                 except Exception as e: 
                     st.error(f"AI Error: {e}")
             else:
